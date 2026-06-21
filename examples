@@ -1,0 +1,54 @@
+Scenario Outline: Invalid passwords are rejected
+
+  Given a valid reset link exists
+  When the user enters "<password>"
+  Then the password should be rejected
+
+Examples:
+  | password |
+  | short |
+  | password |
+  | 12345678 |
+  | PASSWORD123 |
+
+Aynı davranış farklı inputlarla test ediliyor.
+Davranış değişmiyor.
+Sadece veri değişiyor.
+
+Background hakkında uyarı:
+İyi kullanım -> basit ve okunabilir.
+Background:
+  Given a registered user exists
+
+
+Kötü kullanım:
+Background:
+  Given user exists
+  And email service is running
+  And database is initialized
+  And cache is ready
+  And browser is opened
+  And user token is generated
+  And connection is established
+
+Background tekrar eden precondition'ları azaltmak için vardır.
+Ama çok büyürse feature dosyasını anlamak zorlaşır.
+Hatta bazı durumlarda tekrar yazmak, büyük bir Background kullanmaktan daha okunabilir olabilir.
+
+
+
+
+@smoke
+@regression
+Feature: Software Update
+
+  @positive
+  Scenario: Successful update
+    ...
+
+  @negative
+  Scenario: Update fails when device is unreachable
+    ...
+
+Bunlar Gherkin keyword'ü değil.
+Frameworklerin filtreleme amacıyla kullandığı metadata'lar.
