@@ -1,0 +1,285 @@
+bdd-training-demo/
+├── features/
+│   └── notes_management.feature
+├── tests/
+│   ├── step_defs/
+│   │   └── test_notes_steps.py
+│   ├── clients/
+│   │   ├── base_api_client.py
+│   │   ├── auth_client.py
+│   │   └── notes_client.py
+│   ├── services/
+│   │   └── notes_service.py
+│   ├── models/
+│   │   └── note_payloads.py
+│   └── conftest.py
+├── pytest.ini
+└── requirements.txt
+
+
+Feature file
+    ↓
+Step definitions
+    ↓
+Service layer
+    ↓
+API clients
+    ↓
+HTTP requests
+
+Feature file davranışı anlatır. Step definition bu davranışı Python koduna bağlar. 
+Service layer test akışını yönetir. API client ise gerçek HTTP çağrılarını yapar. 
+Böylece feature dosyası API detaylarına boğulmaz.
+
+Base API Client - Bütün ortak HTTP davranışları burada bulunur
+# tests/clients/base_api_client.py
+
+import requests
+
+
+class BaseApiClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def get(self, path: str, token: str | None = None):
+        return requests.get(
+            f"{self.base_url}{path}",
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def post(self, path: str, json: dict | None = None, token: str | None = None):
+        return requests.post(
+            f"{self.base_url}{path}",
+            json=json,
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def put(self, path: str, json: dict | None = None, token: str | None = None):
+        return requests.put(
+            f"{self.base_url}{path}",
+            json=json,
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def delete(self, path: str, token: str | None = None):
+        return requests.delete(
+            f"{self.base_url}{path}",
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    @staticmethod
+    def _headers(token: str | None = None) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["x-auth-token"] = token
+        return headers
+
+Auth Client -> Login/register gibi auth endpoint çağrıları burada olur
+# tests/clients/auth_client.py
+
+from tests.clients.base_api_client import BaseApiClient
+
+
+class AuthClient(BaseApiClient):
+    def register_user(self, name: str, email: str, password: str):
+        return self.post(
+            "/users/register",
+            json={
+                "name": name,
+                "email": email,
+                "password": password,
+            },
+        )
+
+    def login_user(self, email: str, password: str):
+        return self.post(
+            "/users/login",
+            json={
+                "email": email,
+                "password": password,
+            },
+        )
+Notes Client -> noted CRUD endpoint çağrıları burada bulunur
+# tests/clients/notes_client.py
+
+from tests.clients.base_api_client import BaseApiClient
+
+
+class NotesClient(BaseApiClient):
+    def create_note(self, token: str, title: str, description: str, category: str = "Home"):
+        return self.post(
+            "/notes",
+            token=token,
+            json={
+                "title": title,
+                "description": description,
+                "category": category,
+            },
+        )
+
+    def get_all_notes(self, token: str):
+        return self.get("/notes", token=token)
+
+    def get_note_by_id(self, token: str, note_id: str):
+        return self.get(f"/notes/{note_id}", token=token)
+
+    def update_note(self, token: str, note_id: str, title: str, description: str, category: str = "Home"):
+        return self.put(
+            f"/notes/{note_id}",
+            token=token,
+            json={
+                "title": title,
+                "description": description,
+                "category": category,
+            },
+        )
+
+    def delete_note(self, token: str, note_id: str):
+        return self.delete(f"/notes/{note_id}", token=token)
+
+
+Service layer
+BDD açısından en değerli katman burası. Step definitionların şişmesini engeller.
+# tests/services/notes_service.py
+
+import uuid
+
+from tests.clients.auth_client import AuthClient
+from tests.clients.notes_client import NotesClient
+
+
+class NotesService:
+    def __init__(self, base_url: str):
+        self.auth_client = AuthClient(base_url)
+        self.notes_client = NotesClient(base_url)
+
+    def create_authenticated_user(self) -> dict:
+        unique = uuid.uuid4().hex[:8]
+        email = f"bdd_user_{unique}@test.com"
+        password = "Password123!"
+
+        register_response = self.auth_client.register_user(
+            name="BDD User",
+            email=email,
+            password=password,
+        )
+
+        login_response = self.auth_client.login_user(
+            email=email,
+            password=password,
+        )
+
+        token = login_response.json()["data"]["token"]
+
+        return {
+            "email": email,
+            "password": password,
+            "token": token,
+            "register_response": register_response,
+            "login_response": login_response,
+        }
+
+    def create_note_for_user(self, token: str, title: str, description: str) -> dict:
+        response = self.notes_client.create_note(
+            token=token,
+            title=title,
+            description=description,
+        )
+
+        note = response.json()["data"]
+
+        return {
+            "response": response,
+            "note_id": note["id"],
+            "note": note,
+        }
+
+    def note_exists_in_list(self, token: str, note_id: str) -> bool:
+        response = self.notes_client.get_all_notes(token)
+        notes = response.json()["data"]
+        return any(note["id"] == note_id for note in notes)
+
+Conftest
+# tests/conftest.py
+
+import pytest
+
+from tests.services.notes_service import NotesService
+
+
+@pytest.fixture
+def context():
+    return {}
+
+
+@pytest.fixture
+def notes_service():
+    return NotesService(
+        base_url="https://practice.expandtesting.com/notes/api"
+    )
+
+
+Feature file
+@api @notes
+Feature: Notes Management
+
+  As an authenticated user
+  I want to create, view, update and delete my notes
+  So that I can keep my personal information organized
+
+  Background:
+    Given an authenticated user exists
+
+  @positive
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+Step definition
+
+# tests/step_defs/test_notes_steps.py
+
+from pytest_bdd import scenarios, given, when, then, parsers
+
+scenarios("../../features/notes_management.feature")
+
+
+@given("an authenticated user exists")
+def authenticated_user_exists(context, notes_service):
+    context["user"] = notes_service.create_authenticated_user()
+
+
+@when(parsers.parse('the user creates a note with title "{title}" and description "{description}"'))
+def user_creates_note(context, notes_service, title, description):
+    context["created_note"] = notes_service.create_note_for_user(
+        token=context["user"]["token"],
+        title=title,
+        description=description,
+    )
+
+
+@then("the note should be created successfully")
+def note_should_be_created_successfully(context):
+    response = context["created_note"]["response"]
+    assert response.status_code in [200, 201]
+    assert context["created_note"]["note_id"] is not None
+
+
+@then("the note should be available in the user's notes list")
+def note_should_be_available_in_list(context, notes_service):
+    assert notes_service.note_exists_in_list(
+        token=context["user"]["token"],
+        note_id=context["created_note"]["note_id"],
+    )
+
+
+
+Feature file değişmeden kalır. Step definition cümleleri okunabilir kalır. 
+API endpoint detayları NotesClient içine gider. 
+Login/register gibi akışlar NotesService içinde yönetilir. 
+Böylece BDD senaryoları davranış odaklı, Python tarafı ise sürdürülebilir olur.
