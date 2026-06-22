@@ -1,0 +1,137 @@
+@api @notes
+Feature: Notes Management
+
+  As an authenticated user
+  I want to create, view, update and delete my notes
+  So that I can keep my personal information organized
+
+  Background:
+    Given an authenticated user exists
+
+
+  @smoke @positive
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+
+  @positive
+  Scenario: User retrieves note details
+    Given the user has a note with title "Daily Plan" and description "Team meeting at 10"
+    When the user retrieves the note details
+    Then the note details should include title "Daily Plan"
+    And the note details should include description "Team meeting at 10"
+
+
+  @positive
+  Scenario: User updates an existing note
+    Given the user has a note with title "Old Title" and description "Old Description"
+    When the user updates the note title to "Updated Title" and description to "Updated Description"
+    Then the note should be updated successfully
+    And the note should be available with title "Updated Title"
+    And the note should be available with description "Updated Description"
+
+
+  @positive
+  Scenario: User deletes an existing note
+    Given the user has a note with title "Temporary Note" and description "This note will be deleted"
+    When the user deletes the note
+    Then the note should be deleted successfully
+    But the note should not be available in the user's notes list
+
+
+  @negative @validation
+  Scenario Outline: Note creation is rejected when required information is missing
+    When the user tries to create a note with title "<title>" and description "<description>"
+    Then the note creation should be rejected
+    And the error message should mention "<missing_field>"
+
+    Examples:
+      | title         | description | missing_field |
+      |               | Buy milk    | title         |
+      | Shopping List |             | description   |
+
+
+  @negative @auth
+  Scenario: Unauthenticated user cannot create a note
+    Given the user is not authenticated
+    When the user tries to create a note with title "Private Note" and description "Secret"
+    Then the note creation should be rejected
+    And the user should be asked to authenticate
+
+
+  @negative @auth
+  Scenario: Unauthenticated user cannot retrieve notes
+    Given the user is not authenticated
+    When the user tries to retrieve notes
+    Then the request should be rejected
+    And the user should be asked to authenticate
+
+
+
+Bu senaryolarda POST /notes, GET /notes/{id} gibi endpoint detaylarını feature dosyasına yazmadık. 
+Çünkü BDD tarafında amacımız endpoint’i değil, API üzerinden doğrulanan kullanıcı davranışını anlatmak. 
+HTTP status code, request body ve token gibi detaylar step definition veya API client katmanında kalabilir.
+
+
+
+
+
+
+Dikkat ederseniz burada feature dosyasını tamamen kullanıcı davranışına odaklanarak yazdık.
+Örneğin:
+
+Scenario: User creates a new note successfully
+
+Given an authenticated user exists
+When the user creates a note with title "Shopping List" and description "Buy milk"
+Then the note should be created successfully
+And the note should be available in the user's notes list
+
+Burada:
+POST endpoint'i yok,
+HTTP status code yok,
+Request body yok,
+JSON path yok.
+Sadece davranış var.
+
+Bugün bu davranışı API kullanarak doğruluyoruz
+Peki yarın aynı sistemi UI üzerinden UI üzerinden test etmeye karar verirsek ne olacak?
+
+
+Feature file
+        ↓
+Step Definitions
+        ↓
+Notes API Client
+        ↓
+REST API
+
+
+Yarın:
+Feature file
+        ↓
+Step Definitions
+        ↓
+Page Objects
+        ↓
+UI
+
+Feature dosyamız aynı kalabilir.
+
+Bu, feature dosyalarının hiçbir zaman değişmeyeceği anlamına gelmez.
+Eğer davranış değişirse, feature dosyası da değişmelidir.
+Ama implementasyon değişti diye feature dosyasını değiştirmek istemeyiz.
+Mesela:
+Bugün:
+API
+Yarın:
+UI
+Sonra:
+Mobile App
+Sonra:
+GraphQL
+Davranış değişmediyse:
+Scenario: User creates a note successfully
+değişmeyebilir. Sadece alttaki implementasyon değişir.
