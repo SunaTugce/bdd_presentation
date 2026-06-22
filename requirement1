@@ -219,58 +219,40 @@ class AuthClient(ApiClient):
         }
 
 test/support/notes_client.py
-import uuid
-
 from tests.support.api_client import ApiClient
 
 
-class AuthClient(ApiClient):
-    def register_user(self, name: str, email: str, password: str):
+class NotesClient(ApiClient):
+    def create_note(
+        self,
+        token: str,
+        title: str,
+        description: str,
+        category: str = "Home",
+    ):
         return self.post(
-            "/users/register",
+            "/notes",
+            token=token,
             payload={
-                "name": name,
-                "email": email,
-                "password": password,
+                "title": title,
+                "description": description,
+                "category": category,
             },
         )
 
-    def login_user(self, email: str, password: str):
-        return self.post(
-            "/users/login",
-            payload={
-                "email": email,
-                "password": password,
-            },
-        )
+    def get_all_notes(self, token: str):
+        return self.get("/notes", token=token)
 
-    def create_authenticated_user(self) -> dict:
-        unique_id = uuid.uuid4().hex[:8]
-        email = f"bdd_user_{unique_id}@test.com"
-        password = "Password123!"
+    def delete_note(self, token: str, note_id: str):
+        return self.delete(f"/notes/{note_id}", token=token)
 
-        register_response = self.register_user(
-            name="BDD User",
-            email=email,
-            password=password,
-        )
+    def note_exists_in_list(self, token: str, note_id: str) -> bool:
+        response = self.get_all_notes(token)
+        assert response.status_code == 200, response.text
 
-        assert register_response.status_code in [200, 201], register_response.text
+        notes = response.json()["data"]
+        return any(note["id"] == note_id for note in notes)
 
-        login_response = self.login_user(
-            email=email,
-            password=password,
-        )
-
-        assert login_response.status_code == 200, login_response.text
-
-        token = login_response.json()["data"]["token"]
-
-        return {
-            "email": email,
-            "password": password,
-            "token": token,
-        }
 tests/step_defs/test_notes_management_steps.py
 from pytest_bdd import scenarios, given, when, then, parsers
 
