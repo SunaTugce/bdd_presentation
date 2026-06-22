@@ -200,3 +200,314 @@ Burada davranış:
 Link yaşı password reset sonucunu etkiliyor.
 Bu çok daha BDD kokuyor.
 
+------kötü örnek----
+Scenario: Create note API returns 200
+
+  Given I have a bearer token
+  When I send POST request to "/notes/api/notes"
+  Then response status code should be 200
+  And response body field "success" should be true
+
+
+
+-----daha davranış odaklı
+
+Scenario: User creates a new note successfully
+
+  Given an authenticated user exists
+  When the user creates a note
+  Then the note should be created successfully
+  And the note should be available in the user's notes list
+
+
+İlk örnek API client testine benziyor. İkinci örnek ise API üzerinden doğrulanan bir kullanıcı davranışını anlatıyor. İkisi de API çağırabilir ama BDD açısından ikinci ifade daha değerlidir.
+
+API seviyesinde BDD yazarken hedefimiz şudur:
+UI kadar kırılgan olmadan, sistem davranışını kullanıcı veya domain diliyle doğrulamak.
+
+
+
+Scenario Outline örneği — Note creation validation
+Bunu unit test gibi hissettirmemek için sadece field validation değil, API’nin kullanıcıya sunduğu davranışı anlatacak şekilde yazabilirsin:
+
+@api @validation
+Scenario Outline: Note creation is rejected when required information is missing
+
+  Given an authenticated user exists
+  When the user tries to create a note with title "<title>" and description "<description>"
+  Then the note creation should be rejected
+  And the error message should mention "<missing_field>"
+
+Examples:
+  | title        | description       | missing_field |
+  |              | Buy milk          | title         |
+  | Shopping     |                   | description   |
+
+Burada aynı davranışı test ediyoruz: “Eksik zorunlu bilgiyle note oluşturma reddedilir.” Sadece hangi alanın eksik olduğu değişiyor. Bu nedenle Scenario Outline mantıklı.
+
+
+-----Daha API-specific ama yine davranış odaklı örnek
+
+@api @auth
+Feature: Notes access control
+
+  As a user
+  I want my notes to be accessible only by me
+  So that my private information remains secure
+
+  Scenario: Unauthenticated user cannot create a note
+    Given the user is not authenticated
+    When the user tries to create a note
+    Then the note creation should be rejected
+    And the user should be asked to authenticate
+
+  Scenario: Unauthenticated user cannot retrieve notes
+    Given the user is not authenticated
+    When the user tries to retrieve notes
+    Then the request should be rejected
+    And the user should be asked to authenticate
+
+
+Vague requirement
+The system should allow users to manage their notes.
+Clarified requirement
+Registered users should be able to create, view, update, and delete their own notes through the Notes API. A note must have a title and description. Notes created by a user should be visible only to that user. Users should not be able to create, update, retrieve, or delete notes without authentication.
+Business rules
+Only authenticated users can manage notes.
+A user can create a note with a valid title and description.
+Title and description are mandatory.
+After creation, the note should appear in the user’s notes list.
+A user can retrieve details of their own note.
+A user can update the title and description of their own note.
+A user can delete their own note.
+Deleted notes should no longer appear in the notes list.
+A user cannot manage another user’s notes.
+
+@api @notes
+Feature: Notes Management
+
+  As an authenticated user
+  I want to create, view, update and delete my notes
+  So that I can keep my personal information organized
+
+  Background:
+    Given an authenticated user exists
+
+  @positive
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+  @positive
+  Scenario: User retrieves note details
+    Given the user has a note with title "Daily Plan" and description "Team meeting at 10"
+    When the user retrieves the note details
+    Then the note details should include title "Daily Plan"
+    And the note details should include description "Team meeting at 10"
+
+  @positive
+  Scenario: User updates an existing note
+    Given the user has a note with title "Old Title" and description "Old Description"
+    When the user updates the note title to "Updated Title" and description to "Updated Description"
+    Then the note should be updated successfully
+    And the note should be available with title "Updated Title"
+    And the note should be available with description "Updated Description"
+
+  @positive
+  Scenario: User deletes an existing note
+    Given the user has a note with title "Temporary Note" and description "This note will be deleted"
+    When the user deletes the note
+    Then the note should be deleted successfully
+    And the note should not be available in the user's notes list
+
+  @negative
+  Scenario Outline: Note creation is rejected when required information is missing
+    When the user tries to create a note with title "<title>" and description "<description>"
+    Then the note creation should be rejected
+    And the error message should mention "<missing_field>"
+
+    Examples:
+      | title         | description | missing_field |
+      |               | Buy milk    | title         |
+      | Shopping List |             | description   |
+
+  @negative
+  Scenario: Unauthenticated user cannot create a note
+    Given the user is not authenticated
+    When the user tries to create a note with title "Private Note" and description "Secret"
+    Then the note creation should be rejected
+    And the user should be asked to authenticate
+
+  @negative
+  Scenario: User cannot retrieve another user's note
+    Given another user has a note with title "Private Note"
+    When the user tries to retrieve the other user's note
+    Then the note access should be rejected
+
+
+----Anti pattern örnek
+Scenario: Login successfully
+
+  Given user opens Chrome browser
+  And user navigates to "https://example.com/login"
+  And user enters "admin" into username textbox
+  And user enters "123456" into password textbox
+  And user clicks login button
+  Then dashboard page should be displayed
+
+
+
+Scenario: Login with valid credentials
+
+  Given the user has valid credentials
+  When the user logs in
+  Then the user should access the dashboard
+
+Burada davranış daha net: geçerli kullanıcı login olunca dashboard’a erişebilmeli.
+---> teknik detaylar step definition içinde kalmalı
+
+
+Uzun senaryolar:
+Scenario: Update device firmware
+
+  Given framework manager is created
+  And device manager is initialized
+  And IEM manager is initialized
+  And user logs into IED
+  And user logs into IEM
+  And device is activated
+  And device details are fetched
+  And firmware version is checked from database
+  And firmware package is uploaded
+  And update job is created
+  And job status is checked every 10 seconds
+  And device is rebooted
+  And device comes online
+  Then firmware version should be updated
+
+
+Scenario: Device firmware is updated successfully
+
+  Given the device is onboarded
+  And a compatible firmware version is available
+  When the firmware update is triggered
+  Then the device should run the target firmware version
+  And the device should remain onboarded after the update
+
+
+Framework manager yaratmak, login olmak, polling yapmak gibi detaylar otomasyon katmanında kalmalı.
+
+.------ Her şeyi reusable step yapmaya çalışmak
+BDD’de step reuse iyi bir şeydir ama aşırıya kaçınca senaryolar doğal dil olmaktan çıkar.
+
+Given Create framework manager ["IED", "IEM"]
+And Login to ["IED", "IEM"]
+And Get system snapshot for fw_update : ["Device_detail"]
+When Send sw update request with ["target_version"]
+Then Verify field ["firmwareVersion"] equals ["target_version"]
+
+Bu okunabilir gibi görünse de business veya teknik olmayan biri için anlamı zayıf. Daha çok framework komutu gibi.
+
+Given the device is onboarded
+And the target firmware version is available
+When the device is updated to the target firmware version
+Then the device should report the target firmware version
+
+4. Scenario’yu test case ID gibi kullanmak
+Scenario: TC_12345
+  Given ...
+  When ...
+  Then ...
+
+Scenario: Verify SW Update Case 1
+Scenario: Verify SW Update Case 2
+Scenario: Verify SW Update Case 3
+
+Bu isimler davranışı açıklamaz. Raporu okuyan kişi neyin test edildiğini anlamaz.
+Scenario: Device can be updated from manufactured firmware to target firmware
+Scenario: Device can be updated from an older supported firmware to target firmware
+Scenario: Unsupported firmware update path is rejected
+
+5. Implementation detail’ları senaryoya taşımak
+When POST request is sent to "/api/v1/devices/update"
+And response code should be 202
+And job id should be stored in variable "job_id"
+
+Bu API testlerinde bazen gerekli olabilir ama BDD seviyesinde fazla teknik kalır.
+Daha davranış odaklı hali:
+
+When the firmware update is requested for the device
+Then the update job should be accepted
+And the device should complete the update successfully
+
+API endpoint, status code, job id gibi kontroller step definition veya API test seviyesinde detaylandırılabilir.
+Ama önemli bir nüans var: Eğer API sözleşmesini test ediyorsanız, status code gibi detaylar senaryoda olabilir. Yani her teknik detay otomatik anti-pattern değildir. Sorulması gereken soru şu:
+Bu bilgi davranışı anlamak için gerekli mi, yoksa sadece otomasyonun nasıl çalıştığını mı anlatıyor?
+
+
+6. Given içinde aksiyon yapmak
+Given user clicks login button
+When dashboard is opened
+Then user should see devices
+Given sistemin başlangıç durumunu anlatmalı. Ana aksiyon genelde When altında olmalı.
+
+Given the user is authenticated
+When the user opens the device list
+Then available devices should be displayed
+
+veya login davranışı test ediliyorsa:
+
+Given the user has valid credentials
+When the user logs in
+Then the device list should be displayed
+
+
+7. Bir senaryoda birden fazla davranış test etmek
+8. Çok fazla Background kullanmak
+Background:
+  Given framework manager is created
+  And user logs into IED
+  And user logs into IEM
+  And device is activated
+  And firmware version exists
+  And system snapshot is taken
+  And proxy is configured
+  And NTP is configured
+  And application is installed
+
+Background çok uzarsa senaryonun bağlamı kaybolur. Ayrıca her senaryo için gerçekten gerekli olmayan şeyleri de çalıştırabilir.
+Senaryoya özel koşullar senaryonun içinde yazılmalı:
+9. BDD’yi sadece code reuse için kullanmak
+Eğer BDD seçiminin ana nedeni “step reuse”, “daha az kod tekrarı”, “feature file okunabilirliği” ise bu tek başına yanlış değil. Ama risk şu: BDD kolayca bir automation DSL haline gelebilir.
+
+Given call method "create_manager"
+And call method "login"
+And call method "get_device_detail"
+When call method "send_update_request"
+Then call method "verify_update_status"
+
+Bu BDD değil, metod çağrılarını Gherkin’e sarmalamak olur.
+
+
+Given the device is ready for firmware update
+When the firmware update is triggered
+Then the device should complete the update successfully
+
+Burada step reuse hâlâ var ama senaryo davranış seviyesinde kalıyor.
+
+
+
+
+
+
+
+Scenario: Device remains stable after reboot following a successful software update
+
+  Given the device has completed a software update successfully
+  And the device is running the target software version
+  And the device is onboarded
+  When the device is rebooted
+  Then the device should become reachable again
+  And the device should remain onboarded
+  And the device should still report the target software version
