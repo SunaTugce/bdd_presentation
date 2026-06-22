@@ -1,0 +1,382 @@
+Requirement: Authenticated users should be able to create, view, update, and delete their own notes.
+
+
+Sorularımızı soralım:
+Kullanıcı authenticated değilse ne olur?
+Note için hangi alanlar zorunlu?
+Silinen note listede görünmeli mi?
+Kullanıcı başka kullanıcının note’unu görebilir mi?
+Update sonrası eski değerler ne olmalı?
+
+Örneklerimizi çıkaralım:
+Example 1:
+Given an authenticated user
+When the user creates a note with title and description
+Then the note appears in the notes list
+
+Example 2:
+Given an authenticated user with an existing note
+When the user deletes the note
+Then the note no longer appears in the notes list
+
+Example 3:
+Given an unauthenticated user
+When the user tries to create a note
+Then the request is rejected
+
+Henüz otomasyon düşünmüyoruz, örnek çıkarak davranışı netleştirmeye çalışıyoruz.
+Örneklerden kurallar çıkaralım: Bu gerçekten çok ideal bir adım ve yapılmadığına eminim, 
+ama yapılsa her şey daha kolay olurdu.
+
+BR1: Only authenticated users can manage notes.
+BR2: A note must have title and description.
+BR3: Created notes must appear in the user’s notes list.
+BR4: Deleted notes must not appear in the list.
+BR5: A user can access only their own notes.
+
+Kurallarımızı çıkardık. 
+
+Şimdi Gherkin'e çevirelim:
+
+@api @notes
+Feature: Notes Management
+
+  Background:
+    Given an authenticated user exists
+
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+  Scenario: User deletes an existing note
+    Given the user has a note with title "Temporary Note" and description "Delete me"
+    When the user deletes the note
+    Then the note should be deleted successfully
+    But the note should not be available in the user's notes list
+
+Bunu bir boş şekilde çalıştıralım, içini fake servis ile dolduralım. 
+Sonra gerçek API ile katmanlarımızı doldururuz.
+----------------- daha düzgün hali
+@api @notes
+Feature: Notes Management
+
+  As an authenticated user
+  I want to create, view, update and delete my notes
+  So that I can keep my personal information organized
+
+  Background:
+    Given an authenticated user exists
+
+  @smoke @positive
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+  @positive
+  Scenario: User deletes an existing note
+    Given the user has a note with title "Temporary Note" and description "Delete me"
+    When the user deletes the note
+    Then the note should be deleted successfully
+    But the note should not be available in the user's notes list
+
+  @negative @validation
+  Scenario Outline: Note creation is rejected when required information is missing
+    When the user tries to create a note with title "<title>" and description "<description>"
+    Then the note creation should be rejected
+    And the error message should mention "<missing_field>"
+
+    Examples:
+      | title         | description | missing_field |
+      |               | Buy milk    | title         |
+      | Shopping List |             | description   |
+
+--------------
+
+conftest-
+import pytest
+
+from tests.support.auth_client import AuthClient
+from tests.support.notes_client import NotesClient
+
+
+BASE_URL = "https://practice.expandtesting.com/notes/api"
+
+
+@pytest.fixture
+def context():
+    return {}
+
+
+@pytest.fixture
+def auth_client():
+    return AuthClient(BASE_URL)
+
+
+@pytest.fixture
+def notes_client():
+    return NotesClient(BASE_URL)
+
+test/support/api_client---
+import requests
+
+
+class ApiClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def _headers(self, token: str | None = None) -> dict:
+        headers = {"Content-Type": "application/json"}
+
+        if token:
+            headers["x-auth-token"] = token
+
+        return headers
+
+    def get(self, path: str, token: str | None = None):
+        return requests.get(
+            f"{self.base_url}{path}",
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def post(self, path: str, payload: dict | None = None, token: str | None = None):
+        return requests.post(
+            f"{self.base_url}{path}",
+            json=payload,
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def put(self, path: str, payload: dict | None = None, token: str | None = None):
+        return requests.put(
+            f"{self.base_url}{path}",
+            json=payload,
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+    def delete(self, path: str, token: str | None = None):
+        return requests.delete(
+            f"{self.base_url}{path}",
+            headers=self._headers(token),
+            timeout=10,
+        )
+
+test/support/auth_client.py
+import uuid
+
+from tests.support.api_client import ApiClient
+
+
+class AuthClient(ApiClient):
+    def register_user(self, name: str, email: str, password: str):
+        return self.post(
+            "/users/register",
+            payload={
+                "name": name,
+                "email": email,
+                "password": password,
+            },
+        )
+
+    def login_user(self, email: str, password: str):
+        return self.post(
+            "/users/login",
+            payload={
+                "email": email,
+                "password": password,
+            },
+        )
+
+    def create_authenticated_user(self) -> dict:
+        unique_id = uuid.uuid4().hex[:8]
+        email = f"bdd_user_{unique_id}@test.com"
+        password = "Password123!"
+
+        register_response = self.register_user(
+            name="BDD User",
+            email=email,
+            password=password,
+        )
+
+        assert register_response.status_code in [200, 201], register_response.text
+
+        login_response = self.login_user(
+            email=email,
+            password=password,
+        )
+
+        assert login_response.status_code == 200, login_response.text
+
+        token = login_response.json()["data"]["token"]
+
+        return {
+            "email": email,
+            "password": password,
+            "token": token,
+        }
+
+test/support/notes_client.py
+import uuid
+
+from tests.support.api_client import ApiClient
+
+
+class AuthClient(ApiClient):
+    def register_user(self, name: str, email: str, password: str):
+        return self.post(
+            "/users/register",
+            payload={
+                "name": name,
+                "email": email,
+                "password": password,
+            },
+        )
+
+    def login_user(self, email: str, password: str):
+        return self.post(
+            "/users/login",
+            payload={
+                "email": email,
+                "password": password,
+            },
+        )
+
+    def create_authenticated_user(self) -> dict:
+        unique_id = uuid.uuid4().hex[:8]
+        email = f"bdd_user_{unique_id}@test.com"
+        password = "Password123!"
+
+        register_response = self.register_user(
+            name="BDD User",
+            email=email,
+            password=password,
+        )
+
+        assert register_response.status_code in [200, 201], register_response.text
+
+        login_response = self.login_user(
+            email=email,
+            password=password,
+        )
+
+        assert login_response.status_code == 200, login_response.text
+
+        token = login_response.json()["data"]["token"]
+
+        return {
+            "email": email,
+            "password": password,
+            "token": token,
+        }
+tests/step_defs/test_notes_management_steps.py
+from pytest_bdd import scenarios, given, when, then, parsers
+
+
+scenarios("../../features/notes_management.feature")
+
+
+@given("an authenticated user exists")
+def authenticated_user_exists(context, auth_client):
+    context["user"] = auth_client.create_authenticated_user()
+
+
+@given(parsers.parse('the user has a note with title "{title}" and description "{description}"'))
+def user_has_a_note(context, notes_client, title, description):
+    response = notes_client.create_note(
+        token=context["user"]["token"],
+        title=title,
+        description=description,
+    )
+
+    assert response.status_code in [200, 201], response.text
+
+    note = response.json()["data"]
+
+    context["note"] = note
+    context["note_id"] = note["id"]
+
+
+@when(parsers.parse('the user creates a note with title "{title}" and description "{description}"'))
+def user_creates_note(context, notes_client, title, description):
+    response = notes_client.create_note(
+        token=context["user"]["token"],
+        title=title,
+        description=description,
+    )
+
+    context["response"] = response
+
+    if response.status_code in [200, 201]:
+        note = response.json()["data"]
+        context["note"] = note
+        context["note_id"] = note["id"]
+
+
+@when(parsers.parse('the user tries to create a note with title "{title}" and description "{description}"'))
+def user_tries_to_create_note(context, notes_client, title, description):
+    context["response"] = notes_client.create_note(
+        token=context["user"]["token"],
+        title=title,
+        description=description,
+    )
+
+
+@when("the user deletes the note")
+def user_deletes_note(context, notes_client):
+    context["response"] = notes_client.delete_note(
+        token=context["user"]["token"],
+        note_id=context["note_id"],
+    )
+
+
+@then("the note should be created successfully")
+def note_should_be_created_successfully(context):
+    response = context["response"]
+
+    assert response.status_code in [200, 201], response.text
+    assert response.json()["success"] is True
+    assert context["note_id"] is not None
+
+
+@then("the note should be available in the user's notes list")
+def note_should_be_available_in_list(context, notes_client):
+    assert notes_client.note_exists_in_list(
+        token=context["user"]["token"],
+        note_id=context["note_id"],
+    )
+
+
+@then("the note should be deleted successfully")
+def note_should_be_deleted_successfully(context):
+    response = context["response"]
+
+    assert response.status_code == 200, response.text
+    assert response.json()["success"] is True
+
+
+@then("the note should not be available in the user's notes list")
+def note_should_not_be_available_in_list(context, notes_client):
+    assert not notes_client.note_exists_in_list(
+        token=context["user"]["token"],
+        note_id=context["note_id"],
+    )
+
+
+@then("the note creation should be rejected")
+def note_creation_should_be_rejected(context):
+    response = context["response"]
+
+    assert response.status_code in [400, 422], response.text
+    assert response.json()["success"] is False
+
+
+@then(parsers.parse('the error message should mention "{missing_field}"'))
+def error_message_should_mention(context, missing_field):
+    response_body = context["response"].json()
+    message = response_body.get("message", "").lower()
+
+    assert missing_field.lower() in message
+
