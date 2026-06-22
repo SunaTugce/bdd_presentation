@@ -157,3 +157,46 @@ Feature: Firmware update on device
     And the device firmware version should still be the target version
 ```
 
+
+
+Feature: Account Lock
+
+Scenario Outline: Account lock status after consecutive failed logins
+
+  Given a registered user exists
+  When the user enters an invalid password "<attempt_count>" times
+  Then the account should be "<account_status>"
+
+Examples:
+  | attempt_count | account_status |
+  | 1             | active         |
+  | 2             | active         |
+  | 3             | locked         |
+
+
+Davranış aynı:
+"Başarısız login denemeleri account status'u etkiliyor."
+Sadece örnekler değişiyor.
+
+
+
+Feature: Password Reset
+
+Scenario Outline: Reset link validity
+
+  Given a registered user has requested password reset
+  And the reset link age is "<link_age>"
+  When the user enters a new password
+  Then the password reset should be "<result>"
+
+Examples:
+  | link_age | result     |
+  | 5 min     | successful |
+  | 10 min    | successful |
+  | 20 min    | rejected   |
+
+
+Burada davranış:
+Link yaşı password reset sonucunu etkiliyor.
+Bu çok daha BDD kokuyor.
+
