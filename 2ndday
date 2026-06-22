@@ -1,0 +1,98 @@
+bdd-training-demo/
+├── features/
+│   └── notes.feature
+├── tests/
+│   ├── step_defs/
+│   │   └── test_notes_steps.py
+│   ├── services/
+│   │   └── notes_service.py
+│   └── conftest.py
+├── requirements.txt
+├── pytest.ini
+└── README.md
+
+
+
+pytest
+pytest-bdd
+requests
+
+
+[pytest]
+testpaths = tests
+python_files = test_*.py
+
+
+Feature: Notes Management
+
+  Scenario: User creates a note successfully
+    Given an authenticated user exists
+    When the user creates a note with title "Shopping List"
+    Then the note should be created successfully
+
+
+import pytest
+
+
+@pytest.fixture
+def context():
+    return {}
+
+tests/services/notes_service.py
+Eğitimde API’ye bağlanmak istemezsen fake service kullan. Bu en risksiz seçenek.
+
+class NotesService:
+    def create_note(self, title: str) -> dict:
+        return {
+            "success": True,
+            "title": title
+        }
+
+
+
+from pytest_bdd import scenarios, given, when, then
+from tests.services.notes_service import NotesService
+
+scenarios("../../features/notes.feature")
+
+
+@given("an authenticated user exists")
+def authenticated_user(context):
+    context["user"] = {
+        "username": "test_user",
+        "authenticated": True
+    }
+
+
+@when('the user creates a note with title "Shopping List"')
+def create_note(context):
+    service = NotesService()
+    context["response"] = service.create_note("Shopping List")
+
+
+@then("the note should be created successfully")
+def verify_note_created(context):
+    assert context["response"]["success"] is True
+    assert context["response"]["title"] == "Shopping List"
+
+
+
+pip install -r requirements.txt
+pytest
+
+
+Eğitim için önerim
+İlk demo için gerçek API kullanma. Çünkü internet, token, endpoint, test data gibi şeyler sorun çıkarabilir. Önce fake service ile pytest-bdd mantığını göster.
+Sonra ikinci demo olarak gerçek API seviyesine geçebilirsin:
+
+Feature file aynı kalır
+Step definition aynı mantıkta kalır
+Sadece NotesService içinde gerçek requests çağrısı yapılır
+
+Bu da mimari mesajı çok güzel verir:
+Feature file değişmedi.
+Step cümleleri değişmedi.
+Sadece alttaki service layer değişti.
+İşte bu yüzden thin steps, rich domain layer diyoruz.
+
+
