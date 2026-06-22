@@ -52,3 +52,108 @@ Feature: Software Update
 
 Bunlar Gherkin keyword'ü değil.
 Frameworklerin filtreleme amacıyla kullandığı metadata'lar.
+
+
+
+
+Feature: Firmware update path validation
+
+  Background:
+    Given the test environment is ready
+    And the device is activated
+    And the firmware update input is loaded
+
+  @software_update @manufactured_to_target @regression
+  Scenario: Device can be updated from manufactured version to target version
+    Given the device is on its manufactured firmware version
+    And the target firmware version is resolved from the input
+    When I update the device through the configured firmware update path
+    Then every firmware update step should complete successfully
+    And the device firmware version should be the resolved target version
+    And the device should be reachable
+    And edge core should be running
+    And the device should remain activated
+
+  @software_update @n_minus_2_to_target @regression
+  Scenario: Device can be updated from n-2 version to target version
+    Given the device is on the configured n-2 firmware version
+    And the target firmware version is resolved from the input
+    When I update the device through the configured firmware update path
+    Then every firmware update step should complete successfully
+    And the device firmware version should be the resolved target version
+    And the device should be reachable
+    And edge core should be running
+    And the device should remain activated
+
+
+
+```gherkin
+Feature: Firmware update on device
+
+  As a Device Builder team
+  We want to verify that a device can be updated to the target firmware version
+  So that the device remains operational and consistent after update, reboot, reset, hard reset, and power cycle operations
+
+  Background:
+    Given the test environment is ready
+    And I am logged in to IED and IEM
+    And the device is activated
+    And the target firmware version is available in IEM
+
+  @software_update @regression
+  Scenario: Device can be updated to the target firmware version incrementally
+    Given the current device details are captured for firmware update
+    When I request an incremental firmware update to the target version
+    Then the firmware update should complete successfully
+    And the device should reboot and become reachable
+    And I restore the IED session
+    And edge core should be running
+    And the device should remain activated
+    And the device firmware version should be the target version
+
+  @software_update @reboot @regression
+  Scenario: Device remains operational after reboot following a successful firmware update
+    Given the device has been successfully updated to the target firmware version
+    When I reboot the device via IED
+    Then the device should reboot and become reachable
+    And edge core should be running
+    And the device should remain activated
+    And the device firmware version should still be the target version
+
+  @software_update @reset @regression
+  Scenario: Device can be reset after a successful firmware update
+    Given the device has been successfully updated to the target firmware version
+    When I reset the device via IED
+    Then the device should become reachable
+    And I restore the IED session
+    And edge core should be running
+    And the device should remain activated
+    And the application count should be 0
+    And the device firmware version should still be the target version
+
+  @software_update @hard_reset @regression
+  Scenario: Device can be hard reset after a successful firmware update
+    Given the device has been successfully updated to the target firmware version
+    And the current device details are captured for hard reset
+    When I hard reset the device via IED
+    Then the device should reboot and become reachable
+    And the device should be deactivated
+    And the device name should be available in IEM
+    And the device firmware version should still be the target version
+
+  @software_update @hard_reset @powercut @regression
+  Scenario: Device remains consistent after power cycle following hard reset on an updated device
+    Given the device has been successfully updated to the target firmware version
+    And the device has been hard reset successfully
+    And the device is deactivated
+    And the device name is available in IEM
+    And I am logged in to the power controller
+    When I power off the device
+    Then the device should be powered off
+    When I power on the device
+    Then the device should become reachable
+    And the device should remain deactivated
+    And the device name should still be available in IEM
+    And the device firmware version should still be the target version
+```
+
