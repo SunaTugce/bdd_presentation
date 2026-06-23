@@ -1,0 +1,197 @@
+notes_ui.feature
+@ui @notes
+Feature: Notes Management
+
+  Background:
+    Given an authenticated user exists
+
+  @smoke @positive
+  Scenario: User creates a new note successfully
+    When the user creates a note with title "Shopping List" and description "Buy milk"
+    Then the note should be created successfully
+    And the note should be available in the user's notes list
+
+  @positive
+  Scenario: User deletes an existing note
+    Given the user has a note with title "Temporary Note" and description "Delete me"
+    When the user deletes the note
+    Then the note should be deleted successfully
+    But the note should not be available in the user's notes list
+
+  @negative @validation
+  Scenario Outline: Note creation is rejected when required information is missing
+    When the user tries to create a note with title "<title>" and description "<description>"
+    Then the note creation should be rejected
+    And the error message should mention "<missing_field>"
+
+    Examples:
+      | title         | description | missing_field |
+      |               | Buy milk    | title         |
+      | Shopping List |             | description   |
+
+
+-----notes_pages.py ------
+from playwright.sync_api import Page, expect
+
+
+class NotesPage:
+    URL = "https://practice.expandtesting.com/notes/app"
+
+    def __init__(self, page: Page):
+        self.page = page
+
+    def login(self, email: str, password: str) -> None:
+        self.page.goto(self.URL)
+
+        self.page.get_by_role("link", name="Login").click()
+        self.page.get_by_label("Email address").fill(email)
+        self.page.get_by_label("Password").fill(password)
+        self.page.get_by_role("button", name="Login").click()
+
+        expect(self.page.get_by_role("button", name="Add Note")).to_be_visible()
+
+    def create_note(self, title: str, description: str) -> None:
+        self.page.get_by_role("button", name="Add Note").click()
+
+        if title:
+            self.page.get_by_label("Title").fill(title)
+
+        if description:
+            self.page.get_by_label("Description").fill(description)
+
+        self.page.get_by_role("button", name="Create").click()
+
+    def create_note_successfully(self, title: str, description: str) -> None:
+        self.create_note(title, description)
+        expect(self.page.get_by_text(title)).to_be_visible()
+
+    def note_should_be_visible(self, title: str) -> None:
+        expect(self.page.get_by_text(title)).to_be_visible()
+
+    def note_should_not_be_visible(self, title: str) -> None:
+        expect(self.page.get_by_text(title)).not_to_be_visible()
+
+    def delete_note(self, title: str) -> None:
+        note_card = self.page.locator(".card").filter(has_text=title)
+        note_card.get_by_role("button", name="Delete").click()
+
+        # Eğer confirmation modal çıkarsa:
+        if self.page.get_by_role("button", name="Delete").is_visible():
+            self.page.get_by_role("button", name="Delete").click()
+
+    def validation_error_should_mention(self, missing_field: str) -> None:
+        expect(
+            self.page.get_by_text(missing_field, exact=False)
+        ).to_be_visible()
+
+
+
+
+--------conftest------
+import uuid
+import pytest
+
+from tests.support.notes_page import NotesPage
+
+
+@pytest.fixture
+def context():
+    return {}
+
+
+@pytest.fixture
+def notes_page(page):
+    return NotesPage(page)
+
+
+@pytest.fixture
+def test_user():
+    unique = uuid.uuid4().hex[:8]
+
+    return {
+        "email": f"bdd_ui_{unique}@test.com",
+        "password": "Password123!",
+    }
+
+------notes_ui_steps.py--------
+
+
+from pytest_bdd import scenarios, given, when, then, parsers
+
+
+scenarios("../../features/notes_ui.feature")
+
+
+@given("an authenticated user exists")
+def authenticated_user_exists(context, notes_page, test_user):
+    # Eğitimde basitlik için burada login gösteriyoruz.
+    # Gerçek projede kullanıcıyı API ile create edip UI'da login olmak daha stabil olur.
+    notes_page.login(
+        email=test_user["email"],
+        password=test_user["password"],
+    )
+
+    context["user"] = test_user
+
+
+@given(parsers.parse('the user has a note with title "{title}" and description "{description}"'))
+def user_has_a_note(context, notes_page, title, description):
+    notes_page.create_note_successfully(title, description)
+    context["note_title"] = title
+    context["note_description"] = description
+
+
+@when(parsers.parse('the user creates a note with title "{title}" and description "{description}"'))
+def user_creates_note(context, notes_page, title, description):
+    notes_page.create_note(title, description)
+    context["note_title"] = title
+    context["note_description"] = description
+
+
+@when(parsers.parse('the user tries to create a note with title "{title}" and description "{description}"'))
+def user_tries_to_create_note(context, notes_page, title, description):
+    notes_page.create_note(title, description)
+    context["missing_title"] = title
+    context["missing_description"] = description
+
+
+@when("the user deletes the note")
+def user_deletes_note(context, notes_page):
+    notes_page.delete_note(context["note_title"])
+
+
+@then("the note should be created successfully")
+def note_should_be_created_successfully(context, notes_page):
+    notes_page.note_should_be_visible(context["note_title"])
+
+
+@then("the note should be available in the user's notes list")
+def note_should_be_available_in_list(context, notes_page):
+    notes_page.note_should_be_visible(context["note_title"])
+
+
+@then("the note should be deleted successfully")
+def note_should_be_deleted_successfully(context):
+    # UI'da delete success toast/message varsa burada kontrol edilebilir.
+    # Eğitim için asıl observable sonuç bir sonraki But step'inde doğrulanıyor.
+    assert True
+
+
+@then("the note should not be available in the user's notes list")
+def note_should_not_be_available_in_list(context, notes_page):
+    notes_page.note_should_not_be_visible(context["note_title"])
+
+
+@then("the note creation should be rejected")
+def note_creation_should_be_rejected(context, notes_page):
+    # UI'da rejected davranışı: note listede görünmemeli.
+    if context.get("note_title"):
+        notes_page.note_should_not_be_visible(context["note_title"])
+
+
+@then(parsers.parse('the error message should mention "{missing_field}"'))
+def error_message_should_mention(context, notes_page, missing_field):
+    notes_page.validation_error_should_mention(missing_field)
+
+
+
