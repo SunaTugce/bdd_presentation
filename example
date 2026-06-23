@@ -1,0 +1,14 @@
+Given an authenticated user is on the notes page
+
+Login ol
+Notes sayfasına git
+
+Step içinde
+login_page.login()
+notes_page.open()
+
+feature dosyasında şunu demek istemiyoruz:
+Given the user logs in
+And the user navigates to notes page
+
+Çünkü bunlar implementasyon detayı
