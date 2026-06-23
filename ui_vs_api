@@ -1,0 +1,60 @@
+Feature: User creates a note
+
+Scenario: User creates a note successfully
+  Given an authenticated user exists
+  When the user creates a note with title "My Note"
+  Then the note should be created successfully
+
+bu senaryonun tamamı API odaklı da değil, UI odaklı da değil
+
+kullanıcının note ekleme davranışını anlatıyor
+API Client
+↓
+Notes API
+
+bunu 
+Page Object
+↓
+Browser
+↓
+UI
+
+bu akış ile değiştirebilirim.
+
+API-
+@when(parsers.parse('the user creates a note with title "{title}"'))
+def create_note(title, notes_client):
+    context["response"] = notes_client.create_note(title)
+
+
+UI----
+@when(parsers.parse('the user creates a note with title "{title}"'))
+def create_note(title, notes_page):
+    notes_page.open_create_form()
+    notes_page.enter_title(title)
+    notes_page.click_create()
+
+
+Ama delete senaryosu için
+Scenario: User deletes an existing note
+  Given the user has a note
+  When the user deletes the note
+  Then the note should be deleted successfully
+  But the note should not be available in the user's notes list
+
+hem API hem UI çalışabilir
+
+
+ama validation senaryosu
+
+
+Scenario Outline: Note creation is rejected when required information is missing
+
+When the user tries to create a note with title "<title>" and description "<description>"
+Then the note creation should be rejected
+And the error message should mention "<missing_field>"
+
+API tarafında 
+400 response ve error message ile doğrulanabilirken
+UI tarafında
+form submit olmaz ve validation mesajı görünür
