@@ -1,0 +1,152 @@
+bdd-training-demo/
+├── features/
+│   └── notes_creation_ui.feature
+├── tests/
+│   ├── step_defs/
+│   │   └── test_notes_creation_ui_steps.py
+│   ├── support/
+│   │   └── notes_page.py
+│   └── conftest.py
+├── requirements.txt
+└── pytest.ini
+
+Requirement: When an authenticated user starts creating a note, the system should display a create note form where title and description can be entered.
+
+@ui @notes
+Feature: Notes Creation UI
+
+  Background:
+    Given an authenticated user is on the notes page
+
+  Scenario: Create note form is displayed
+    When the user starts creating a new note
+    Then the create note form should be displayed
+    And the form should allow entering a title and description
+
+burada UI detayı feature'a girebilir çünkü requirement'ın kendisi formu görme ile ilgili.
+
+notes_creation_ui.feature
+@ui @notes
+Feature: Notes Creation UI
+
+  As an authenticated user
+  I want to start creating a new note from the notes page
+  So that I can enter note details before saving it
+
+  Background:
+    Given an authenticated user is on the notes page
+
+  @positive
+  Scenario: Create note form is displayed
+    When the user starts creating a new note
+    Then the create note form should be displayed
+    And the form should allow entering a title and description
+
+pytest
+pytest-bdd
+playwright
+pytest-playwright
+
+conftest.py ----
+import pytest
+
+from tests.support.notes_page import NotesPage
+
+
+@pytest.fixture
+def context():
+    return {}
+
+
+@pytest.fixture
+def notes_page(page):
+    return NotesPage(page)
+
+utilities/notes_page.py -------
+from playwright.sync_api import Page, expect
+
+
+class NotesPage:
+    URL = "https://practice.expandtesting.com/notes/app"
+
+    def __init__(self, page: Page):
+        self.page = page
+
+    def open(self):
+        self.page.goto(self.URL)
+
+    def login(self, email: str, password: str):
+        self.open()
+
+        # Selector'lar sayfadaki gerçek DOM'a göre küçük revize isteyebilir.
+        self.page.get_by_test_id("login-email").fill(email)
+        self.page.get_by_test_id("login-password").fill(password)
+        self.page.get_by_test_id("login-submit").click()
+
+    def open_create_note_form(self):
+        self.page.get_by_role("button", name="Add Note").click()
+
+    def verify_create_note_form_is_visible(self):
+        expect(self.page.get_by_text("Add new note")).to_be_visible()
+
+    def verify_title_and_description_are_available(self):
+        expect(self.page.get_by_test_id("note-title")).to_be_visible()
+        expect(self.page.get_by_test_id("note-description")).to_be_visible()
+
+tests/notest_creation_ui_steps.py --------
+from pytest_bdd import scenarios, given, when, then
+
+
+scenarios("../../features/notes_creation_ui.feature")
+
+
+@given("an authenticated user is on the notes page")
+def authenticated_user_is_on_notes_page(notes_page):
+    # Eğitim için örnek user. Gerçek demo öncesi kullanıcıyı app/API üzerinden oluşturman daha güvenli olur.
+    notes_page.login(
+        email="bdd_user@test.com",
+        password="Password123!"
+    )
+
+
+@when("the user starts creating a new note")
+def user_starts_creating_note(notes_page):
+    notes_page.open_create_note_form()
+
+
+@then("the create note form should be displayed")
+def create_note_form_should_be_displayed(notes_page):
+    notes_page.verify_create_note_form_is_visible()
+
+
+@then("the form should allow entering a title and description")
+def form_should_allow_title_and_description(notes_page):
+    notes_page.verify_title_and_description_are_available()
+
+Bu senaryoda UI detayı feature dosyasına girdi çünkü requirement’ın kendisi “create note form displayed” davranışıyla ilgili. 
+Ama locator, test id, button click gibi detayları feature dosyasına değil, 
+NotesPage ara katmanına koyduk.
+
+
+Anti-pattern fixing:
+Scenario: Add note
+  Given I open Chrome
+  And I click login
+  And I enter username
+  And I enter password
+  And I click submit
+  And I click Add Note
+  Then popup should appear
+  When I enter title
+  And I enter description
+  And I click Create
+  Then note should be visible
+
+Bunu iki ayrı senaryoya ayırın: biri note creation behavior, diğeri create form UI behavior.
+
+
+Bugün BDD flow’u gerçekten uyguladık. 
+Requirement’tan doğrudan automation’a atlamadık. 
+Önce sorular sorduk, örnekler çıkardık, business rules yazdık, sonra scenario’ya ve en son automation’a geçtik. 
+BDD’nin asıl değeri de burada başlıyor.
+
