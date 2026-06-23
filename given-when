@@ -1,0 +1,22 @@
+@when("the user deletes the note")
+def when_user_deletes_note(context, notes_client):
+    delete_note(context, notes_client)
+
+
+@given("the user has deleted a note")
+def given_user_has_deleted_note(context, notes_client):
+    # setup/precondition
+    response = notes_client.create_note(...)
+    context["note_id"] = response.json()["data"]["id"]
+
+    delete_note(context, notes_client)
+
+    # guard assertion: setup başarılı mı?
+    assert context["response"].status_code == 200
+
+
+
+Reusable operation/helper → ortak kullanılır
+Given step → setup + guard check
+When step → action + response context’e koyma
+Then/But step → gerçek davranış assertion’ı
